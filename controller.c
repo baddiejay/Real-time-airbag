@@ -17,12 +17,12 @@
 #define CPUMAP 0x1
 #define DIAG_SHM1 111439
 
-//MBX
+//MBX definition
 static MBX* mbx;			//MBX per le richieste allo SS
 static MBX* airbag;         //MBX per la comunicazione con l'airbag
 static MBX* end;            //MBX per la comunicazione tra i task
 
-//DESCRITTORI TASK
+//Task descriptors
 static RT_TASK *main_Task;
 static RT_TASK *read_Task;
 static RT_TASK *filter_Task;
@@ -34,12 +34,12 @@ static RT_TASK *filter_Task2;
 static RT_TASK *control_Task2;
 static RT_TASK *write_Task2;
 
-//DESCRITTORE SS
+//SS descriptors
 static RT_TASK *SS_Task;
-//DESCRITTORE AIRBAG
+//Airbag descriptor
 static RT_TASK *airbag_Task;
 
-//THREADS
+//Threads
 static pthread_t read_thread;
 static pthread_t filter_thread;
 static pthread_t control_thread;
@@ -64,7 +64,7 @@ int* actuator;
 int* reference;
 int* air;
 
-//Puntatore per la diagnostica
+//Pointer to diagnostic
 struct diagnostica* diagnostic;
 struct diagnostica* diagnostic1;
 
@@ -75,12 +75,12 @@ int tail = 0;
 SEM* space_avail;
 SEM* meas_avail;
 
-//Semaforo per la diagnostica
+//Semaphore for diagnostics
 SEM* diagnostica;
 SEM* space_avail2;
 SEM* meas_avail2;
 
-static TaskInfo ssInfo;			//Struttura per l'inizializzazione del task
+static TaskInfo ssInfo;			
 
 static void * acquire_loop(void * par) {
 
@@ -89,10 +89,10 @@ static void * acquire_loop(void * par) {
 		exit(1);
 	}
 
-    RTIME WCET = 0;
-    RTIME time[3];
-    RTIME stime;
-    RTIME etime;
+        RTIME WCET = 0;
+        RTIME time[3];
+        RTIME stime;
+        RTIME etime;
 	RTIME ctime;
 	RTIME expected = rt_get_time() + sampl_interv;
     
@@ -103,44 +103,42 @@ static void * acquire_loop(void * par) {
 	int msg=2;
         
 	while (keep_on_running){
-
-        //Prima misurazione del tempo
-        rt_get_exectime(read_Task,time);
-        stime=time[0];
+		//First time measurement
+		rt_get_exectime(read_Task,time);
+		stime=time[0];
         
-		/*Se viene rilevata la frenata brusca (riduzione del valore letto del sensore di almeno 50 punti) posiziona un messaggio di
-		valore 2 nella mbx dello SS per l'attivazione dell'airbag */
+		/* If hard braking is detected (reduction of the sensor readings by at least 50 points) place a
+		value 2 in the mbx of the SS for airbag activation */
 		if((measure-sensor[0])>=50)
 			rt_mbx_send(mbx, &msg, sizeof(int));
 		measure=sensor[0];
 
-		// DATA ACQUISITION FROM PLANT
+		//Data acquisition from plant
 		rt_sem_wait(space_avail);
 		buffer[head] = (sensor[0]);
 		head = (head+1) % BUF_SIZE;
 		rt_sem_signal(meas_avail);
-
-        rt_task_wait_period();
-        //Seconda misurazione del tempo
-        rt_get_exectime(read_Task,time);
-        etime=time[0];
-        ctime=etime-stime;
-        //Calcolo più preciso del WCET per iterazioni successive
+        	rt_task_wait_period();
+		
+		//Second time measurement
+		rt_get_exectime(read_Task,time);
+		etime=time[0];
+		ctime=etime-stime;
+		
+		//More accurate calculation of WCET based on successive iterations
 		if(ctime > WCET)
 			WCET = ctime;
         
 		rt_sem_wait(diagnostica);
-        diagnostic->uno.WCET_acquire=WCET;
+        	diagnostic->uno.WCET_acquire=WCET;
 		diagnostic->uno.buffer=buffer[head-1];
 		rt_sem_signal(diagnostica);
 	}
 	rt_task_delete(read_Task);
-
 	return 0;
 }
 
 static void * acquire_loop2(void * par) {
-
 	if (!(read_Task2 = rt_task_init_schmod(nam2num("READ"), 1, 0, 0, SCHED_FIFO, CPUMAP))) {
 		printf("CANNOT INIT SENSOR TASK2\n");
 		exit(1);
@@ -149,9 +147,9 @@ static void * acquire_loop2(void * par) {
 	RTIME expected = rt_get_time() + sampl_interv;
 
 	RTIME WCET = 0;
-    RTIME time[3];
-    RTIME stime;
-    RTIME etime;
+    	RTIME time[3];
+    	RTIME stime;
+    	RTIME etime;
 	RTIME ctime;
 
 	rt_task_make_periodic(read_Task2, expected, sampl_interv);
@@ -163,33 +161,35 @@ static void * acquire_loop2(void * par) {
 	
 	while (keep_on_running){
 
-        //Prima misurazione del tempo
-        rt_get_exectime(read_Task2, time);
-        stime=time[0];
-        
-        /*Se viene rilevata la frenata brusca (riduzione del valore letto del sensore di almeno 50 punti) posiziona un messaggio di
-         valore 2 nella mbx dello SS per l'attivazione dell'airbag */
+		//First time measurement
+		rt_get_exectime(read_Task2, time);
+		stime=time[0];
+
+		/* If hard braking is detected (reduction of the sensor readings by at least 50 points) place a
+		value 2 in the mbx of the SS for airbag activation */
 		if((measure-sensor[1])>=50)
 			rt_mbx_send(mbx, &msg, sizeof(int));
 		measure=sensor[1];
 		
-		// DATA ACQUISITION FROM PLANT
+		//Data acquisition from plant
 		rt_sem_wait(space_avail2);
 		buffer[head] = (sensor[1]);
 		head = (head+1) % BUF_SIZE;
 		rt_sem_signal(meas_avail2);
 
 		rt_task_wait_period();
-        //Seconda misurazione del tempo
+		
+       		//Second time measurement
 		rt_get_exectime(read_Task2, time);
 		etime=time[0];
                 ctime=etime-stime;
-        //Calcolo più preciso del WCET per iterazioni successive
+		
+        	//More accurate calculation of WCET based on successive iterations
 		if(ctime > WCET)
 			WCET = ctime;
         
 		rt_sem_wait(diagnostica);
-		diagnostic->due.buffer=buffer[head];        //head-1
+		diagnostic->due.buffer=buffer[head];        
 		diagnostic->due.WCET_acquire=WCET;
 		rt_sem_signal(diagnostica);
 	}
@@ -199,7 +199,6 @@ static void * acquire_loop2(void * par) {
 }
 
 static void * filter_loop(void * par) {
-
 	if (!(filter_Task = rt_task_init_schmod(nam2num("FILTER"), 3, 0, 0, SCHED_FIFO, CPUMAP))) {
 		printf("CANNOT INIT FILTER TASK\n");
 		exit(1);
@@ -209,10 +208,10 @@ static void * filter_loop(void * par) {
 	rt_task_make_periodic(filter_Task, expected, sampl_interv);
 	rt_make_hard_real_time();
 
-    RTIME WCET = 0;
-    RTIME time[3];
-    RTIME stime;
-    RTIME etime;
+        RTIME WCET = 0;
+        RTIME time[3];
+        RTIME stime;
+        RTIME etime;
 	RTIME ctime;
 
 	int cnt = BUF_SIZE;
@@ -220,12 +219,11 @@ static void * filter_loop(void * par) {
 	unsigned int avg = 0;
     
 	while (keep_on_running){
-        
-        //Prima misurazione del tempo
+        	//First time measurement
 		rt_get_exectime(filter_Task, time);
-        stime=time[0];
+		stime=time[0];
 		
-        // FILTERING (average)
+       		//Filtering (average)
 		rt_sem_wait(meas_avail);
 		sum += buffer[tail];
 		tail = (tail+1) % BUF_SIZE;
@@ -241,17 +239,19 @@ static void * filter_loop(void * par) {
 			rt_send(control_Task, avg);		
 		}
 		rt_task_wait_period();
-        //Seconda misurazione del tempo
-        rt_get_exectime(filter_Task, time);
+		
+        	//Second time measurement
+        	rt_get_exectime(filter_Task, time);
 		etime=time[0];
                 ctime=etime-stime;
-        //Calcolo più preciso del WCET per iterazioni successive
+		
+        	//More accurate calculation of WCET based on successive iterations
 		if(ctime > WCET)
 			WCET = ctime;
         
 		rt_sem_wait(diagnostica);
 		diagnostic->uno.avg=avg;
-        diagnostic->uno.WCET_filter=WCET;
+        	diagnostic->uno.WCET_filter=WCET;
 		rt_sem_signal(diagnostica);
 	}
 	rt_task_delete(filter_Task);
@@ -270,10 +270,10 @@ static void * filter_loop2(void * par) {
 	rt_task_make_periodic(filter_Task2, expected, sampl_interv);
 	rt_make_hard_real_time();
     
-    RTIME WCET = 0;
-    RTIME time[3];
-    RTIME stime;
-    RTIME etime;
+        RTIME WCET = 0;
+        RTIME time[3];
+        RTIME stime;
+        RTIME etime;
 	RTIME ctime;
     
 	int cnt = BUF_SIZE;
@@ -282,9 +282,9 @@ static void * filter_loop2(void * par) {
     
 	while (keep_on_running){
         
-        //Prima misurazione del tempo
-        rt_get_exectime(filter_Task2, time);
-        stime=time[0];
+		//First time measurement
+		rt_get_exectime(filter_Task2, time);
+		stime=time[0];
         
 		// FILTERING (aver age)
 		rt_sem_wait(meas_avail2);
@@ -303,17 +303,18 @@ static void * filter_loop2(void * par) {
 		}
 		rt_task_wait_period();
         
-        //Seconda misurazione del tempo
-        rt_get_exectime(filter_Task, time);
+        	//Second time measurement
+       		rt_get_exectime(filter_Task, time);
 		etime=time[0];
-        ctime=etime-stime;
-        //Calcolo più preciso del WCET per iterazioni successive
+        	ctime=etime-stime;
+		
+        	//More accurate calculation of WCET based on successive iterations
 		if(ctime > WCET)
 			WCET = ctime;
         
 		rt_sem_wait(diagnostica);
 		diagnostic->due.avg=avg;
-        diagnostic->due.WCET_filter=WCET;
+        	diagnostic->due.WCET_filter=WCET;
 		rt_sem_signal(diagnostica);
 
 	}
@@ -323,13 +324,13 @@ static void * filter_loop2(void * par) {
 }
 
 static void * control_loop(void * par) {
-	unsigned int prev_sensor=0;             //to store previous sensor readings to detect skids
-	unsigned int plant_state = 0;           //speed received from the plant
-	int error = 0;                          //error to use to calculate the control action
-	unsigned int control_action = 0;        //control action to be sent to the actuator
-	unsigned int ANTI_SKID_ON = 1;		//to activate the ANTI SKID
-	unsigned int CONTROL_PERIOD_MULTIPLIER = 1;	//to configure the control period
-	int block = 0; 				// to check if the wheel is blocked
+	unsigned int prev_sensor=0;             	//Variable to store previous sensor readings to detect skids
+	unsigned int plant_state = 0;           	//Speed received from the plant
+	int error = 0;                          	//Error to use to calculate the control action
+	unsigned int control_action = 0;        	//Control action to be sent to the actuator
+	unsigned int ANTI_SKID_ON = 1;			//Variable to activate the ANTI SKID
+	unsigned int CONTROL_PERIOD_MULTIPLIER = 1;	//Variable to configure the control period
+	int block = 0; 					//Variable to check if the wheel is blocked
 
  
 	if (!(control_Task = rt_task_init_schmod(nam2num("CNTRL"), 5, 0, 0, SCHED_FIFO, CPUMAP))) {
@@ -342,35 +343,35 @@ static void * control_loop(void * par) {
 		CONTROL_PERIOD_MULTIPLIER*BUF_SIZE*sampl_interv);
 	rt_make_hard_real_time();
     
-    RTIME WCET = 0;
-    RTIME time[3];
-    RTIME stime;
-    RTIME etime;
+    	RTIME WCET = 0;
+    	RTIME time[3];
+    	RTIME stime;
+    	RTIME etime;
 	RTIME ctime;
     
 	int msg=0;
       
 	while (keep_on_running){
-        //Prima misurazione del tempo
-        rt_get_exectime(control_Task, time);
-        stime=time[0];
+		//First time measurement
+		rt_get_exectime(control_Task, time);
+		stime=time[0];
         
 		rt_mbx_receive_if(end, &msg, sizeof(int));
 		
-		/*Se è stato attivato l'airbag dal relativo task devo fermare la simulazione
-		quindi porto il reference a 0*/
+		/* If the airbag has been activated by the relative task I have to stop the simulation
+		so I bring the reference to 0 */
 		if((*air)==1)
 			(*reference)=0;	
 
-		// receiving the average plant state from the filter
+		//Receiving the average plant state from the filter
 		rt_receive(filter_Task, &plant_state);
 
-		// evaluating if the wheel is blocked
-        if(prev_sensor==(sensor[0]))
-			block = 1;
-        else block = 0;
+		//Evaluating if the wheel is blocked
+		if(prev_sensor==(sensor[0]))
+				block = 1;
+		else block = 0;
 
-		// computation of the control law
+		//Computation of the control law
 		error = (*reference) - plant_state;
 		if (error > 0) control_action = 1;
 		else if (error < 0) control_action = 2;
@@ -381,23 +382,25 @@ static void * control_loop(void * par) {
 				control_action = 4; //brake only when no skid is detected.
 		} else if ((*reference) == 0) control_action = 4;
  
-        prev_sensor=(sensor[0]);
+       		prev_sensor=(sensor[0]);
 
 		rt_send_if(write_Task, control_action);
 		rt_task_wait_period();
-        //Seconda misurazione del tempo
-        rt_get_exectime(control_Task, time);
+		
+		//Second time measurement
+		rt_get_exectime(control_Task, time);
 		etime=time[0];
-        ctime=etime-stime;
-		//Calcolo più preciso del WCET per iterazioni successive
-        if(ctime > WCET)
+		ctime=etime-stime;
+		
+		//More accurate calculation of WCET based on successive iterations
+        	if(ctime > WCET)
 			WCET = ctime;
         
 		rt_sem_wait(diagnostica);
 		diagnostic->uno.block=block;
 		diagnostic->uno.error=error;
 		diagnostic->uno.control_action=control_action;
-        diagnostic->uno.WCET_controller=WCET;
+        	diagnostic->uno.WCET_controller=WCET;
 		rt_sem_signal(diagnostica);
 	}
 	rt_task_delete(control_Task);
@@ -406,13 +409,13 @@ static void * control_loop(void * par) {
 }
 
 static void * control_loop2(void * par) {
-	unsigned int prev_sensor=0;             //to store previous sensor readings to detect skids
-	unsigned int plant_state2 = 0;           //speed received from the plant
-	int error = 0;                          //error to use to calculate the control action
-	unsigned int control_action = 0;        //control action to be sent to the actuator
-	unsigned int ANTI_SKID_ON = 1;		//to activate the ANTI SKID
-	unsigned int CONTROL_PERIOD_MULTIPLIER = 1;	//to configure the control period
-	int block = 0; 				// to check if the wheel is blocked
+	unsigned int prev_sensor=0;             	//Variable to store previous sensor readings to detect skids
+	unsigned int plant_state2 = 0;           	//Speed received from the plant
+	int error = 0;                          	//Error to use to calculate the control action
+	unsigned int control_action = 0;        	//Control action to be sent to the actuator
+	unsigned int ANTI_SKID_ON = 1;			//Variable to activate the ANTI SKID
+	unsigned int CONTROL_PERIOD_MULTIPLIER = 1;	//Variable to configure the control period
+	int block = 0; 					//Variable to check if the wheel is blocked
 
 	if (!(control_Task2 = rt_task_init_schmod(nam2num("CNT"), 5, 0, 0, SCHED_FIFO, CPUMAP))) {
 		printf("CANNOT INIT CONTROL TASK\n");
@@ -424,36 +427,35 @@ static void * control_loop2(void * par) {
 		CONTROL_PERIOD_MULTIPLIER*BUF_SIZE*sampl_interv);
 	rt_make_hard_real_time();
     
-    RTIME WCET = 0;
-    RTIME time[3];
-    RTIME stime;
-    RTIME etime;
+    	RTIME WCET = 0;
+    	RTIME time[3];
+    	RTIME stime;
+    	RTIME etime;
 	RTIME ctime;;
     
-    int msg=0;
+    	int msg=0;
 
 	while (keep_on_running){
-        
-        //Prima misurazione del tempo
-        rt_get_exectime(control_Task2, time);
-        stime=time[0];
-		
-        rt_mbx_receive_if(end, &msg, sizeof(int));
+		//First time measurement
+		rt_get_exectime(control_Task2, time);
+		stime=time[0];
 
-		/*Se è stato attivato l'airbag dal relativo task devo fermare la simulazione
-		quindi porto il reference a 0*/
+		rt_mbx_receive_if(end, &msg, sizeof(int));
+
+		/* If the airbag has been activated by the relative task I have to stop the simulation
+		so I bring the reference to 0 */
 		if((*air)==1)
 			(*reference)=0;	
 
-		// receiving the average plant state from the filter
+		//Receiving the average plant state from the filter
 		rt_receive(filter_Task2, &plant_state2);
 		
-		// evaluating if the wheel is blocked
-        if(prev_sensor==(sensor[1]))
+		//Evaluating if the wheel is blocked
+        	if(prev_sensor==(sensor[1]))
 			 block = 1;
-        else block = 0;
+        	else block = 0;
 		
-		// computation of the control law
+		//Computation of the control law
 		error = (*reference) - plant_state2;
 		if (error > 0) control_action = 1;
 		else if (error < 0) control_action = 2;
@@ -464,24 +466,26 @@ static void * control_loop2(void * par) {
 				control_action = 4; //brake only when no skid is detected.
 		} else if ((*reference) == 0) control_action = 4;
  
-        prev_sensor=(sensor[1]);
+        	prev_sensor=(sensor[1]);
 
-		// sending the control action to the actuator
+		//Sending the control action to the actuator
 		rt_send_if(write_Task2, control_action);
 		rt_task_wait_period();
-        //Seconda misurazione del tempo
+		
+        	//Second time measurement
 		rt_get_exectime(control_Task2, time);
 		etime=time[0];
                 ctime=etime-stime;
-        //Calcolo più preciso del WCET per iterazioni successive
+		
+        	//More accurate calculation of WCET based on successive iterations
 		if(ctime > WCET)
 			WCET = ctime;
 		
-        rt_sem_wait(diagnostica);
+       		rt_sem_wait(diagnostica);
 		diagnostic->due.block=block;
 		diagnostic->due.error=error;
 		diagnostic->due.control_action=control_action;
-        diagnostic->due.WCET_controller=WCET;
+        	diagnostic->due.WCET_controller=WCET;
 		rt_sem_signal(diagnostica);
 	}
 	rt_task_delete(control_Task2);
@@ -503,42 +507,43 @@ static void * actuator_loop(void * par) {
 	unsigned int control_action = 0;
 	int cntr = 0;
     
-    RTIME WCET = 0;
-    RTIME time[3];
-    RTIME stime;
-    RTIME etime;
+    	RTIME WCET = 0;
+    	RTIME time[3];
+    	RTIME stime;
+    	RTIME etime;
 	RTIME ctime;
 	
-    while (keep_on_running){
-        
-        //Prima misurazione del tempo
+   	while (keep_on_running){     
+        	//First time measurement
 		rt_get_exectime(write_Task, time);
-        stime=time[0];
+        	stime=time[0];
 		
-        // receiving the control action from the controller
+        	//Receiving the control action from the controller
 		rt_receive(control_Task, &control_action);
 		
 		switch (control_action) {
 			case 1: cntr = 1; break;
 			case 2:	cntr = -1; break;
 			case 3:	cntr = 0; break;
-            case 4: cntr = -2; break;
+            		case 4: cntr = -2; break;
 			default: cntr = 0;
 		}
 		
 		(actuator[0]) = cntr;
 		rt_task_wait_period();
-        //Seconda misurazione del tempo
-        rt_get_exectime(write_Task, time);
+		
+        	//Second time measurement
+        	rt_get_exectime(write_Task, time);
 		etime=time[0];
-        ctime=etime-stime;
-		//Calcolo più preciso del WCET per iterazioni successive
-        if(ctime > WCET)
+        	ctime=etime-stime;
+		
+		//More accurate calculation of WCET based on successive iterations
+        	if(ctime > WCET)
 			WCET = ctime;
         
 		rt_sem_wait(diagnostica);
 		diagnostic->uno.cnt=cntr;
-        diagnostic->uno.WCET_actuator=WCET;
+        	diagnostic->uno.WCET_actuator=WCET;
 		rt_sem_signal(diagnostica);
 
 	}
@@ -561,41 +566,43 @@ static void * actuator_loop2(void * par) {
 	unsigned int control_action2 = 0;
 	int cntr = 0;
     
-    RTIME WCET = 0;
-    RTIME time[3];
-    RTIME stime;
-    RTIME etime;
+    	RTIME WCET = 0;
+    	RTIME time[3];
+    	RTIME stime;
+    	RTIME etime;
 	RTIME ctime;
 	
-    while (keep_on_running){
-        
-        //Prima misurazione del tempo
+    	while (keep_on_running){
+        	//First time measurement
 		rt_get_exectime(write_Task2, time);
-        stime=time;
-		// receiving the control action from the controller
+       		stime=time;
+		
+		//Receiving the control action from the controller
 		rt_receive(control_Task2, &control_action2);
 		
 		switch (control_action2) {
 			case 1: cntr = 1; break;
 			case 2:	cntr = -1; break;
 			case 3:	cntr = 0; break;
-            case 4: cntr = -2; break;
+            		case 4: cntr = -2; break;
 			default: cntr = 0;
 		}
 		
 		(actuator[1]) = cntr;
 		rt_task_wait_period();
-        //Seconda misurazione del tempo
-        rt_get_exectime(write_Task2, time);
+		
+        	//Second time measurement
+        	rt_get_exectime(write_Task2, time);
 		etime=time[0];
-        ctime=etime-stime;
-		//Calcolo più preciso del WCET per iterazioni successive
-        if(ctime > WCET)
+        	ctime=etime-stime;
+		
+		//More accurate calculation of WCET based on successive iterations
+       		if(ctime > WCET)
 			WCET = ctime;
         
 		rt_sem_wait(diagnostica);
 		diagnostic->due.cnt=cntr;
-        diagnostic->due.WCET_actuator=WCET;
+        	diagnostic->due.WCET_actuator=WCET;
 		rt_sem_signal(diagnostica);
 	}
 	rt_task_delete(write_Task2);
@@ -604,29 +611,29 @@ static void * actuator_loop2(void * par) {
 }
 
 
-//Funzione aperiodica per la richiesta di diagnostica
+//Aperiodic function for diagnostic request
 void aperiodic_fun(RTIME now){
     struct diagnostica prova;
 	rt_sem_wait(diagnostica);
 	
 	for(int i = 0; i < CAPACITA_MAX; i++){
-		/*Salvo i prossimi RT ed RA per la diagnostica se RT 
-		ha superato now*/
+		/* Save the next RT and RA for diagnostic if RT 
+		has passed now */
 		if(ssInfo.RT[i] >= now){
 			diagnostic->RT = ssInfo.RT[i];
 			diagnostic->RA = ssInfo.RA[i];
 			break;
 		}
 	}
-	//Salvo il budget
+	//Budjet saving
 	diagnostic->SS_Cs = ssInfo.Cs;
-        *diagnostic1=*diagnostic;           //Forse lo dovrei commentare
+        *diagnostic1=*diagnostic;           
         prova=*diagnostic;
         rt_mbx_send(mbx,&prova, sizeof(struct diagnostica));
 	rt_sem_signal(diagnostica);
 }
 
-//Sporadi Server
+//Sporadic Server
 static void * ss_loop(void * par){
 
 	if (!(SS_Task = rt_task_init_schmod(nam2num("SS"), 7, 0, 0, SCHED_FIFO, CPUMAP))) {
@@ -638,37 +645,37 @@ static void * ss_loop(void * par){
 
 	int req=0;
 	unsigned int i=0;
-    int msg=1;
+    	int msg=1;
 	
-    RTIME Ra_time;
+    	RTIME Ra_time;
 	RTIME now;
 	RTIME time2sleep;
 	
-    ptr = 0;
+    	ptr = 0;
 
 	while (keep_on_running){
         
-		//RICEVE IL MESSAGGIO CHE È 1 PER IL DIAG E 2 PER L'AIRBAG
+		//RECEIVE MESSAGE WHICH IS 1 FOR DIAG AND 2 FOR AIRBAG
 		rt_mbx_receive(mbx,&req,sizeof(int));
 		if(req==1){
             
 			now = rt_get_time();
 			for(i=0; i<CAPACITA_MAX;i++){
-				//se sono scaduti gli rt (RT precedono il tempo attuale) fa la ricarica
+				//If the rt (RT precede the current time) has expired it does the recharge
 				if(ssInfo.RT[i] < now){
 					ssInfo.Cs += ssInfo.RA[i];
 					ssInfo.RA[i] = 0;
 					ssInfo.RT[i] = 0;
 				}
 			}
-			//Se non ci sono RT scaduti e ricariche da fare calcola il prossimo RT all'arrivo della richiesta
+			//If there are no expired RTs and refills to be done calculate the next RT when the request arrives
 			ssInfo.RT[ptr] = now + ssInfo.Ts;
-			printf("NOW: %d\n", now);                   //dovrei commentare
+			printf("NOW: %d\n", now);                   
 			printf("TS: %d\n", ssInfo.Ts);
 			printf("RT: %d\n", ssInfo.RT[ptr]);
 			
-            //Se non ce la fa a servire la richiesta si sospende fino al prossimo RT
-            //3153 è un tempo fittizio per la richiesta di diagnostica moltiplicato*2 per una maggiore sicurezza
+			//If you can't make it to serve the request you will suspend until the next RT
+			//3153 is a fictitious time for diagnostic request multiplied*2 for increased security
 			while(ssInfo.Cs < (3153 * 2)){
 				for(i=0; i<CAPACITA_MAX;i++){
 					if(ssInfo.RT[i] >= now){
@@ -679,16 +686,17 @@ static void * ss_loop(void * par){
 				}
 			}
             
-            //Se ce la fa serve la richiesta
+            		//If it's possible it serves the aperiodic request
 			aperiodic_fun(now);
 		
 			ssInfo.RA[ptr] = (3153 * 2);
 			ssInfo.Cs -= (3153 * 2);
 			ptr = (ptr+1) % CAPACITA_MAX;
 		}
+		
 		if(req==2){
-            //Viene gestito anche se non c'è capacità
-			//Mando un messaggio sulla MBX airbag per il task Airbag
+            		//It is handled even if there is no capacity
+			//Sending a message about the MBX airbag task
 			rt_mbx_send(airbag, &msg, sizeof(int));
 		}	
 	}
@@ -697,7 +705,7 @@ static void * ss_loop(void * par){
     return 0;
 }
 
-//nuovo task
+//Airbag task
 static void * airbag_func(void * par)
 {
 	if (!(airbag_Task = rt_task_init_schmod(nam2num("AB"), 7, 0, 0, SCHED_FIFO, CPUMAP))) {
@@ -710,7 +718,8 @@ static void * airbag_func(void * par)
 	
 	rt_mbx_receive(airbag, &msg, sizeof(int));
 	printf("AIRBAG ATTIVATO!\n");
-    //Questo valore farà andare il reference a 0 nel controller
+	
+    	//Setting this value will make the reference go to 0 in the controller
 	(*air) = 1;
 
 	rt_task_delete(airbag_Task);
@@ -738,23 +747,23 @@ int main(void){
 	air = rtai_malloc (111333, sizeof(int));
 
 
-	//Puntatore e attach alla SHM per la diagnostica
-	diagnostic = rtai_malloc(DIAG_SHM, sizeof(struct diagnostica));
+	//Pointers and attach to the SHM for diagnostic
+	diagnostic= rtai_malloc(DIAG_SHM, sizeof(struct diagnostica));
         diagnostic1= rtai_malloc(DIAG_SHM1, sizeof(struct diagnostica));
 
-	//SEMAFORI
+	//Semaphores
 	space_avail = rt_typed_sem_init(SPACE_SEM, BUF_SIZE, CNT_SEM | PRIO_Q);
 	meas_avail = rt_typed_sem_init(MEAS_SEM, 0, CNT_SEM | PRIO_Q);
 	space_avail2 = rt_typed_sem_init(SPACE_SEM2, BUF_SIZE, CNT_SEM | PRIO_Q);
 	meas_avail2 = rt_typed_sem_init(MEAS_SEM2, 0, CNT_SEM | PRIO_Q);
 
-	//Semaforo per accedere in mutua esclusione alla SHM
+	//Semaphore for mutually exclusive access to SHM
 	diagnostica = rt_typed_sem_init(DIAG_SEM, BUF_SIZE, CNT_SEM | PRIO_Q);
 
 	(*reference) = 110;
 	sampl_interv = nano2count(CNTRL_TIME);
 
-	//Tempi dello SS
+	//SS time setting
 	ssInfo.Cs = 300*PERIOD_NS; 
 	ssInfo.Ts = nano2count(3000*PERIOD_NS);
 	
@@ -770,9 +779,10 @@ int main(void){
 	pthread_create(&control_thread2, NULL, control_loop2, 0);
 	pthread_create(&write_thread2, NULL, actuator_loop2, 0);
 
-	//Creazione del thread per lo SS
+	//Thread for SS
 	pthread_create(&SS_thread, NULL, ss_loop, 0);
-	//creazione nuovo task utente
+	
+	//Creating new user task
 	pthread_create(&Airbag_thread, NULL, airbag_func, 0);
         int kor=1;
 	while (kor) {
