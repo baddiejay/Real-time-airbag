@@ -1,5 +1,5 @@
 //---------------------- BRAKE.C ----------------------------
-//Task che genera la frenata brusca in base all'input dell'utente
+//Task that generates abrupt braking based on user input
 
 #include <stdio.h>
 #include <unistd.h>
