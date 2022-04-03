@@ -18,7 +18,7 @@
 #define DIAG_SHM1 111439
 
 //MBX definition
-static MBX* mbx;			//MBX per le richieste allo SS
+static MBX* mbx;	    //MBX per le richieste allo SS
 static MBX* airbag;         //MBX per la comunicazione con l'airbag
 static MBX* end;            //MBX per la comunicazione tra i task
 
