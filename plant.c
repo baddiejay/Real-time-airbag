@@ -13,7 +13,7 @@
 
 #define CPUMAP 0x1
 
-//emulates the plant to be controlled
+//This task emulates the plant we have to control
 //if the control is -2, a break (with skating) is emulated
 
 static RT_TASK *main_Task;
@@ -76,9 +76,10 @@ static void * wheel_loop(void * par) {
 				brake = 0; skate = 0; }			
 			else if (actuator[i] == 1) {
 				sensor[i]++; brake = 0; skate = 0;  }
-			/*--Se il valore della SHM è stato messo ad 1 a seguito di una frenata
-			brusca (BRKSENS), simulo la frenata diminuendo il valore del sensore di 50 e
-			abbassando il valore nella SHM--*/
+			
+			/* If the value of the SHM has been set to 1 as a result of an abrupt braking
+			braking (BRKSENS), I simulate the braking by decreasing the value of the sensor by 50 and
+			lowering the value in the SHM */
 			if((handbrake[i])==1){
 				brake = 0;
 				skate = 0;
